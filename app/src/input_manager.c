@@ -8,6 +8,28 @@
 #include "util/lock.h"
 #include "util/log.h"
 
+/*<<[2020-12-31/Jayden/]*/
+#include <time.h>
+#define KEY_SHORT_POWER 1
+#define KEY_LONG_POWER 2
+#define KEY_PLAY_PAUSE 3
+#define KEY_NEXT 4
+#define KEY_PRE 5
+#define KEY_VOLUME_UP	6
+#define KEY_VOLUME_DOWN	7
+
+#define BUFFER_SIZE 1024
+
+FILE *pFile = NULL;
+static char* file_name = "script\\test_script.sh";
+clock_t start_clock, end_clock;
+static char script_buffer[BUFFER_SIZE+1];
+static int diff_clock;
+static int now_tx=0, now_ty=0, old_tx=0, old_ty=0;
+static int is_starting = false;
+static int power_key_state = 0;
+/*>>[2020-12-31/Jayden/] */
+
 static const int ACTION_DOWN = 1;
 static const int ACTION_UP = 1 << 1;
 
@@ -147,6 +169,23 @@ action_cut(struct controller *controller, int actions) {
     send_keycode(controller, AKEYCODE_CUT, actions, "CUT");
 }
 
+/*<<[2021-01-03/Jayden/] */
+static inline void
+action_play_pause(struct controller *controller, int actions) {
+    send_keycode(controller, AKEYCODE_MEDIA_PLAY_PAUSE, actions, "PLAY_PAUSE");
+}
+
+static inline void
+action_play_next(struct controller *controller, int actions) {
+    send_keycode(controller, AKEYCODE_MEDIA_NEXT, actions, "PLAY_NEXT");
+}
+
+static inline void
+action_play_pre(struct controller *controller, int actions) {
+    send_keycode(controller, AKEYCODE_MEDIA_PREVIOUS, actions, "PLAY_PREVIOUS");
+}
+/*>>[2021-01-03/Jayden/] */
+
 // turn the screen on if it was off, press BACK otherwise
 static void
 press_back_or_turn_screen_on(struct controller *controller) {
@@ -158,6 +197,7 @@ press_back_or_turn_screen_on(struct controller *controller) {
     }
 }
 
+#if 0 /*[2021-01-03/Jayden/] */
 static void
 expand_notification_panel(struct controller *controller) {
     struct control_msg msg;
@@ -177,6 +217,7 @@ collapse_notification_panel(struct controller *controller) {
         LOGW("Could not request 'collapse notification panel'");
     }
 }
+#endif
 
 static void
 set_device_clipboard(struct controller *controller, bool paste) {
@@ -251,7 +292,7 @@ clipboard_paste(struct controller *controller) {
         LOGW("Could not request 'paste clipboard'");
     }
 }
-
+#if 0 /*[2021-01-03/Jayden/] */
 static void
 rotate_device(struct controller *controller) {
     struct control_msg msg;
@@ -261,6 +302,7 @@ rotate_device(struct controller *controller) {
         LOGW("Could not request device rotation");
     }
 }
+#endif
 
 static void
 rotate_client_left(struct screen *screen) {
@@ -354,6 +396,136 @@ convert_input_key(const SDL_KeyboardEvent *from, struct control_msg *to,
     return true;
 }
 
+/*[2020-12-26/Jayden/] */  
+void start_script_file(void)
+{   
+    if(!is_starting){
+        LOGI("<<<START SCRTIP FILE>>>\n");
+        if(access("script",0)) { //폴더 없으면 script폴더 생성            
+            mkdir("script");
+        }     
+        
+        // 쉘스크립트에서 CR+LF대시 LF만 하기 위해 바이너리 모드로 오픈하고 
+        // fputc( 0x0A, pFile );를 사용해서 LF만 써줌
+        pFile = fopen(file_name, "wb" ); 
+        
+        if( pFile != NULL )
+        {
+            //LOGI("<<yys>> [%s (%d)] \n", __FUNCTION__, __LINE__);
+            fputs( "#!/system/bin/sh", pFile );
+            fputc( 0x0A, pFile ); //LF
+            fputc( 0x0A, pFile ); //LF
+            fputs( "while [ 1 ]; do", pFile );
+            fputc( 0x0A, pFile ); //LF
+            fclose( pFile );
+            is_starting = true;
+            start_clock = clock();
+        }
+        else
+        {
+            //에러처리 필요
+            LOGI("[%s (%d)] can't open file\n", __FUNCTION__, __LINE__);
+            is_starting = false;
+        }
+        
+    }
+}
+
+/*[2020-12-26/Jayden/] */
+void end_script_file(void)
+{    
+    if(is_starting){  
+        pFile = fopen(file_name, "ab" );
+
+        #if 0
+        end_clock = clock();
+        diff_clock = (end_clock - start_clock)/CLOCKS_PER_SEC;        
+        
+        //sleep x 
+        //done
+        sprintf(script_buffer, "sleep %d",diff_clock);
+        LOGI("%s",script_buffer);              
+        fwrite(script_buffer, 1, strlen(script_buffer), pFile);        
+        fputc( 0x0A, pFile ); //LF
+        #endif
+
+        fputs("done", pFile);
+        fputc( 0x0A, pFile ); //LF
+        fclose(pFile);
+
+        is_starting = false;
+        LOGI("<<<END SCRTIP FILE>>>\n\n");        
+    }   
+}
+void send_key_to_script(int key)
+{
+    if(is_starting){                        
+        end_clock = clock();
+        diff_clock = (end_clock - start_clock)/CLOCKS_PER_SEC;
+        start_clock = end_clock;
+        
+        //LOGI("send_key_to_script: diff_clock:%d is_starting:%d key:%d", diff_clock, is_starting, key);
+        
+        pFile = fopen(file_name, "ab" );
+        
+        sprintf(script_buffer, "sleep %d",diff_clock);
+        LOGI("%s",script_buffer);
+        fwrite(script_buffer, 1, strlen(script_buffer), pFile);
+        fputc( 0x0A, pFile ); //LF
+     
+        if(key == KEY_SHORT_POWER){            
+            sprintf(script_buffer, "input keyevent 26 //KEYCODE_POWER");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);            
+            fputc( 0x0A, pFile ); //LF
+            fclose(pFile);
+        }
+        else if(key == KEY_LONG_POWER){            
+            sprintf(script_buffer, "input keyevent 224 //KEYCODE_WAKEUP");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);
+            fputc( 0x0A, pFile ); //LF
+
+            sprintf(script_buffer, "input keyevent --longpress 26 //LONG KEYCODE_POWER");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);
+            fputc( 0x0A, pFile ); //LF            
+        }
+        else if(key == KEY_PLAY_PAUSE){ 
+            sprintf(script_buffer, "input keyevent 85 //KEYCODE_MEDIA_PLAY_PAUSE");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);
+            fputc( 0x0A, pFile ); //LF
+        }
+        else if(key == KEY_NEXT){ 
+            sprintf(script_buffer, "input keyevent 87 //KEYCODE_MEDIA_NEXT");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);
+            fputc( 0x0A, pFile ); //LF
+        }
+        else if(key == KEY_PRE){ 
+            sprintf(script_buffer, "input keyevent 88 //KEYCODE_MEDIA_PREVIOUS");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);
+            fputc( 0x0A, pFile ); //LF            
+        }
+        else if(key == KEY_VOLUME_UP){ 
+            sprintf(script_buffer, "input keyevent 24 //KEYCODE_VOLUME_UP");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);
+            fputc( 0x0A, pFile ); //LF   
+        }
+        else if(key == KEY_VOLUME_DOWN){ 
+            sprintf(script_buffer, "input keyevent 25 //KEYCODE_VOLUME_DOWN");
+            LOGI("%s",script_buffer);
+            fputs(script_buffer, pFile);
+            fputc( 0x0A, pFile ); //LF  
+        }
+
+        fclose(pFile);     
+    }
+}
+
 void
 input_manager_process_key(struct input_manager *im,
                           const SDL_KeyboardEvent *event) {
@@ -384,19 +556,46 @@ input_manager_process_key(struct input_manager *im,
                 if (control && !shift && !repeat) {
                     action_back(controller, action);
                 }
+                return;            
+            case SDLK_s:                
+                // if (control && !shift && !repeat) {
+                //     action_app_switch(controller, action);
+                // }
+                if((repeat == 0) && (action == 2)){                    
+                    start_script_file(); /*[2021-01-01/Jayden/] */
+                }
                 return;
-            case SDLK_s:
-                if (control && !shift && !repeat) {
-                    action_app_switch(controller, action);
+            case SDLK_e:
+                if((repeat == 0) && (action == 2)){                   
+                    end_script_file(); /*[2021-01-03/Jayden/] */
                 }
                 return;
             case SDLK_m:
-                if (control && !shift && !repeat) {
-                    action_menu(controller, action);
+                // if (control && !shift && !repeat) {
+                //     action_menu(controller, action);
+                // }                
+                if((repeat == 0) && (action == 2)){
+                    send_key_to_script(KEY_PLAY_PAUSE); /*[2021-01-03/Jayden/] */
+                }
+                if (control && !shift && !repeat) {                    
+                    action_play_pause(controller, action);
                 }
                 return;
             case SDLK_p:
-                if (control && !shift && !repeat) {
+                /*>>[2021-01-03/Jayden/] */
+                if((repeat == 1 ) && (action == 1)){
+                    power_key_state = KEY_LONG_POWER;
+                }
+                else if((repeat == 0 ) && (action == 1)){
+                    power_key_state = KEY_SHORT_POWER;
+                }
+                else if((repeat == 0) && (action == 2))
+                {                     
+                    send_key_to_script(power_key_state);
+                }
+                /*<<[2021-01-03/Jayden/] */
+
+                if (control && !shift && !repeat) {                   
                     action_power(controller, action);
                 }
                 return;
@@ -409,12 +608,18 @@ input_manager_process_key(struct input_manager *im,
                 }
                 return;
             case SDLK_DOWN:
+                if((repeat == 0) && (action == 2)){ 
+                    send_key_to_script(KEY_VOLUME_DOWN); /*[2021-01-03/Jayden/] */    
+                }
                 if (control && !shift) {
                     // forward repeated events
                     action_volume_down(controller, action);
                 }
                 return;
             case SDLK_UP:
+                if((repeat == 0) && (action == 2)){ 
+                    send_key_to_script(KEY_VOLUME_UP); /*[2021-01-03/Jayden/] */
+                }
                 if (control && !shift) {
                     // forward repeated events
                     action_volume_up(controller, action);
@@ -474,18 +679,30 @@ input_manager_process_key(struct input_manager *im,
                 }
                 return;
             case SDLK_n:
-                if (control && !repeat && down) {
-                    if (shift) {
-                        collapse_notification_panel(controller);
-                    } else {
-                        expand_notification_panel(controller);
-                    }
+                // if (control && !repeat && down) {
+                //     if (shift) {
+                //         collapse_notification_panel(controller);
+                //     } else {
+                //         expand_notification_panel(controller);
+                //     }
+                // }
+                if((repeat == 0) && (action == 2)){
+                    send_key_to_script(KEY_NEXT); /*[2021-01-03/Jayden/] */
+                }
+                if (control && !shift && !repeat) { 
+                    action_play_next(controller, action);
                 }
                 return;
             case SDLK_r:
-                if (control && !shift && !repeat && down) {
-                    rotate_device(controller);
+                // if (control && !shift && !repeat && down) {
+                //     rotate_device(controller);
+                // }
+                if((repeat == 0) && (action == 2)){
+                    send_key_to_script(KEY_PRE); /*[2021-01-03/Jayden/] */
                 }
+                if (control && !shift && !repeat) { 
+                    action_play_pre(controller, action);
+                }               
                 return;
         }
 
@@ -675,6 +892,45 @@ input_manager_process_mouse_button(struct input_manager *im,
         LOGW("Could not request 'inject mouse button event'");
         return;
     }
+
+    now_tx = msg.inject_touch_event.position.point.x;
+    now_ty = msg.inject_touch_event.position.point.y;
+    if(!down){       
+        end_clock = clock();
+        diff_clock = (end_clock - start_clock)/CLOCKS_PER_SEC;
+        start_clock = end_clock;
+        if(is_starting){
+            sprintf(script_buffer, "sleep %d",diff_clock);
+            LOGI("%s",script_buffer);
+            pFile = fopen(file_name, "ab" ); /*[2021-01-01/Jayden/] write*/
+            fwrite(script_buffer, 1, strlen(script_buffer), pFile);
+            fputc( 0x0A, pFile ); //LF
+            fclose(pFile);
+        }        
+
+        if((old_tx== now_tx) && (old_ty && now_ty)){
+            //LOGI("input touchscreen tap %d %d\n", now_tx, now_ty);
+            if(is_starting){
+                sprintf(script_buffer, "input touchscreen tap %d %d",now_tx, now_ty);
+                LOGI("%s",script_buffer);
+            }
+        }else{
+            //LOGI("input touchscreen swipe %d %d %d %d \n", old_tx, old_ty, now_tx, now_ty);
+            if(is_starting){
+                sprintf(script_buffer, "input touchscreen swipe %d %d %d %d",old_tx, old_ty, now_tx, now_ty);            
+                LOGI("%s",script_buffer);
+            }
+        }
+
+        if(is_starting){ /*[2021-01-01/Jayden/] write*/
+            pFile = fopen(file_name, "ab" );
+            fwrite(script_buffer, 1, strlen(script_buffer), pFile);
+            fputc( 0x0A, pFile ); //LF
+            fclose(pFile);
+        }
+    }
+    old_tx = now_tx;
+    old_ty = now_ty;
 
     // Pinch-to-zoom simulation.
     //

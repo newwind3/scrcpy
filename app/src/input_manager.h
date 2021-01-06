@@ -64,4 +64,5 @@ void
 input_manager_process_mouse_wheel(struct input_manager *im,
                                   const SDL_MouseWheelEvent *event);
 
+void end_script_file(void); /*[2021-01-03/Jayden/] */
 #endif

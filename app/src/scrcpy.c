@@ -258,6 +258,7 @@ event_loop(const struct scrcpy_options *options) {
                 return true;
             case EVENT_RESULT_STOPPED_BY_EOS:
                 LOGW("Device disconnected");
+                end_script_file(); /*[2021-01-03/Jayden/] ���������� ���ڱ� ������ ����ų� �ܸ��� ����ɶ��� �����*/
                 return false;
             case EVENT_RESULT_CONTINUE:
                 break;
@@ -449,8 +450,19 @@ scrcpy(const struct scrcpy_options *options) {
 
     input_manager_init(&input_manager, options);
 
+    LOGI("\n<<How to make script/test_script.sh>>");
+    LOGI("REC Start	  : ALT + s");
+    LOGI("REC End	  : ALT + e");
+    LOGI("Power       : ALT + p");
+    LOGI("PLAY/STOP	  : ALT + m (Music)");
+    LOGI("NEXT        : ALT + n");
+    LOGI("PRE         : ALT + r");
+    LOGI("VOLUME UP   : ALT + ↑ (Up)");
+    LOGI("VOLUME Down : ALT + ↓ (Down)");
     bool ret = event_loop(options);
     LOGD("quit...");
+
+    LOGI("<< copy script/test_script.sh to AutoTool/test_script.sh of AK device>>");
 
     screen_destroy(&screen);
 
